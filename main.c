@@ -21,6 +21,32 @@
 	#include <readline/history.h>
 #endif
 
+long eval_op(long x, char* op, long y) {
+  if (strcmp(op, "+") == 0) { return x + y; }
+  if (strcmp(op, "-") == 0) { return x - y; }
+  if (strcmp(op, "*") == 0) { return x * y; }
+  if (strcmp(op, "/") == 0) { return x / y; }
+  return 0;
+}
+
+long eval(mpc_ast_t *p)
+{
+	if (strstr(p->tag, "number"))
+	{
+		return atoi(p->contents);
+	}
+	char *op = p->children[1]->contents;
+	long x = eval(p->children[2]);
+	
+	int i = 3;
+	while (strstr(p->children[i]->tag, "expr"))
+	{
+		x = eval_op(x, op, eval(p->children[i]));
+		i++;
+	}
+	return x;
+}
+
 int main(int argc, char **argv)
 {
 	mpc_parser_t *Number = mpc_new("number");
@@ -47,7 +73,8 @@ int main(int argc, char **argv)
 		mpc_result_t r;
 		if (mpc_parse("<stdin>", input, Lispy, &r))
 		{
-			mpc_ast_print(r.output);
+			long result = eval(r.output);
+			printf("%li\n", result);
 			mpc_ast_delete(r.output);
 		}
 		else
