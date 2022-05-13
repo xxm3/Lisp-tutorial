@@ -2,6 +2,32 @@
 #include <stdlib.h>
 #include "mpc.h"
 
+typedef struct{
+	int type;
+	long num;
+	int err;
+
+} lval;
+
+enum { LVAL_NUM, LVAL_ERR };
+enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
+
+lval lval_num(int x)
+{
+	lval res;
+	res.num = x;
+	res.type = LVAL_NUM;
+	return res;
+}
+
+lval lval_err(int x)
+{
+	lval res;
+	res.err = x;
+	res.type = LVAL_ERR;
+	return res;
+}
+
 #ifdef _WIN32
 	#include <string.h>
 	static char buffer[2048];
@@ -21,22 +47,35 @@
 	#include <readline/history.h>
 #endif
 
-long eval_op(long x, char* op, long y) {
-  if (strcmp(op, "+") == 0) { return x + y; }
-  if (strcmp(op, "-") == 0) { return x - y; }
-  if (strcmp(op, "*") == 0) { return x * y; }
-  if (strcmp(op, "/") == 0) { return x / y; }
-  return 0;
+lval eval_op(lval x, char* op, lval y) 
+{
+	if (x.type == LVAL_ERR) { return x; }
+  	if (y.type == LVAL_ERR) { return y; }
+  	
+	if (strcmp(op, "+") == 0) { return lval_num(x.num + y.num); }
+  	if (strcmp(op, "-") == 0) { return lval_num(x.num - y.num); }
+  	if (strcmp(op, "*") == 0) { return lval_num(x.num * y.num); }
+  	if (strcmp(op, "/") == 0) 
+	{
+    	return y.num == 0
+    	  ? lval_err(LERR_DIV_ZERO)
+    	  : lval_num(x.num / y.num);
+  	}
+
+  	return lval_err(LERR_BAD_OP);
 }
 
-long eval(mpc_ast_t *p)
+lval eval(mpc_ast_t *p)
 {
 	if (strstr(p->tag, "number"))
-	{
-		return atoi(p->contents);
+	{	
+		errno = 0;
+		long x = strtol(p->contents, NULL, 10);
+		return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
 	}
+
 	char *op = p->children[1]->contents;
-	long x = eval(p->children[2]);
+	lval x = eval(p->children[2]);
 	
 	int i = 3;
 	while (strstr(p->children[i]->tag, "expr"))
@@ -46,6 +85,31 @@ long eval(mpc_ast_t *p)
 	}
 	return x;
 }
+
+void lval_print(lval v) {
+
+	switch (v.type)
+	{
+	case LVAL_NUM:
+		printf("%li", v.num);
+		break;
+
+	case LVAL_ERR:
+		if (v.err == LERR_DIV_ZERO) {
+        	printf("Error: Division By Zero!");
+      	}
+      	if (v.err == LERR_BAD_OP)   {
+      	  	printf("Error: Invalid Operator!");
+      	}
+      	if (v.err == LERR_BAD_NUM)  {
+      	  	printf("Error: Invalid Number!");
+      	}
+		break;
+
+	}
+}
+
+void lval_println(lval v) { lval_print(v); putchar('\n'); }
 
 int main(int argc, char **argv)
 {
@@ -73,8 +137,8 @@ int main(int argc, char **argv)
 		mpc_result_t r;
 		if (mpc_parse("<stdin>", input, Lispy, &r))
 		{
-			long result = eval(r.output);
-			printf("%li\n", result);
+			lval result = eval(r.output);
+			lval_println(result);
 			mpc_ast_delete(r.output);
 		}
 		else
